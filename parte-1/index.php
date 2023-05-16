@@ -8,8 +8,6 @@ require_once 'miSudoku.php';
 
 $sudoku = new miSudoku();
 
-$sudoku->base = 3;
-
 $sudoku->construirBase();
 
 $sudoku->render();

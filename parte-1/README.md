@@ -1,4 +1,5 @@
-#sudoku
+# sudoku
+
 ## Definir la clase y visualizar el tablero en pantalla (parte 1)
 
 La clase a usar para gestionar el Sudoku permitirá:
