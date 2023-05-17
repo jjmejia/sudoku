@@ -181,7 +181,7 @@ class miSudoku {
 						$salida .= $cell['valor'];
 						if ($this->debug) {
 							// Incluye información adicional para cada celda
-							$salida .= $cell['id'] . $cell['bloque'];
+							$salida .= $cell['id'] . $cell['caja'];
 						}
 						$salida .= '</td>';
 					}
