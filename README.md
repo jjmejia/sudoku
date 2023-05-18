@@ -11,7 +11,7 @@ Como programador, he tenido que realizar proyectos profesionalmente, algunos con
 Solucionar un Sudoku no es algo trivial, aunque así lo parece. Lo primero que intenté fue replicar mi forma de abordar estos pasatiempos, pero entonces me di cuenta que plasmar mi forma de pensar en un “algoritmo coherente” no iba a resultar porque, bueno, los humanos tenemos formas de pensar muy particulares y no siempre se trasladan bien al lenguaje de una máquina (de allí la trascendencia, relevancia e importancia de lo que se ha logrado con ChatGPT). Esto me llevo a que muchas veces abandonara este proyecto. Y a que muchas veces lo intentara de nuevo, hasta que finalmente decidí que lo mejor era comenzar por el principio, con algo “sencillo”, como llenar una cuadricula de Sudoku en limpio. Decidido eso, lo siguiente fue trazar la ruta a seguir, que fue la siguiente:
 
 * [Definir la clase y visualizar el tablero en pantalla (parte 1)](https://github.com/jjmejia/sudoku/tree/main/parte-1).
-* Llenar una cuadricula de Sudoku en blanco (parte 2).
+* [Llenar una cuadricula de Sudoku en blanco (parte 2)](https://github.com/jjmejia/sudoku/tree/main/parte-2).
 * Solucionar un Sudoku existente (parte 3).
 * Finalmente, crear un Sudoku para ser impreso (parte 4).
 
