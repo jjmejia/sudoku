@@ -28,6 +28,4 @@ Vale anotar que una alternativa al uso de históricos, es la de reconstruir cada
 
 Si **siempre** se usa una secuencia de validaciones ordenada, “123…”, el total de ciclos para un Sudoku de 9x9 **será** siempre el mismo (en esta implementación, corresponde a un valor de 527 iteraciones). Esto significaría que todos los tableros serían llenados con la misma secuencia en cada fila, comenzando con la primera siempre en “123…”. Para prevenir esto, se aleatorizan el orden de las opciones para cada celda, no basta solamente con la primera (esto limitaría las combinaciones de Sudokus al orden de los números en esa primera fila). Con este ajuste, se pueden generar tableros diferentes cada vez. Es de anotar también que los ciclos encontrados en este escenario, pueden variar entre 81 y un número indeterminado de posibilidades, ya que es realmente una cosa que queda al azar.
 
-![Un tablero de Sudoku con la secuencia fija en "123..."](https://github.com/jjmejia/sudoku/blob/main/imagenes/sudoku-nuevo-full.png?raw=true)
-
 Información también disponible en [mi Blog de Programador](https://micode-manager.blogspot.com/search/label/Sudoku).
