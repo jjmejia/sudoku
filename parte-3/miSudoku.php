@@ -156,6 +156,10 @@ class miSudoku {
 	 */
 	public function llenarFilas() {
 
+		// Antes de proceder, inicializa pendientes si existen celdas fijas.
+		// En el proceso también fija aquellos valores unicos posibles.
+		$this->inicializarDisponibles();
+
 		$ancho_tablero = $this->anchoTablero();
 
 		$x = 0;
@@ -174,9 +178,7 @@ class miSudoku {
 						if ($this->debug) {
 							echo "<hr>NO HISTORIAL: $x , $y : {$this->infoerror} <pre>"; print_r($this->historial); echo "<hr>"; print_r($this->tablero);
 						}
-						if ($this->infoerror == '') {
-							$this->infoerror = "No pudo solucionar fila {$x}";
-						}
+						$this->infoerror = trim("No pudo solucionar Sudoku, falla encontrada en fila {$x}\n" . $this->infoerror);
 						return false;
 					}
 				}
@@ -245,6 +247,10 @@ class miSudoku {
 								'pre' => $this->tablero[$x][$y]['pre'],
 								'rem' => $removidos
 							);
+
+							// Revisa los posibles valores con solamente un elemento disponible. Si alguno falla
+							// en ser un valor valido, cancela esta actualización.
+							$encontrado = $this->validarUnicos();
 
 							break;
 						}
@@ -386,7 +392,10 @@ class miSudoku {
 			}
 
 			// Elimina los disponibles en los demás elementos de la columna
-			for ($cell_x = $x + 1; $cell_x < $ancho_tablero && $this->infoerror == ''; $cell_x ++) {
+			// BUG: Estaba iniciando en $cell_x = $x + 1 lo que hacia que no liberara hacia atrás.
+			// En tableros en blanco funcionan, pero no en tableros con celdas fijas ya que requiere
+			// limpiar al asignar el valor de dichas celdas.
+			for ($cell_x = 0; $cell_x < $ancho_tablero && $this->infoerror == ''; $cell_x ++) {
 				$this->removerDisponible($cell_x, $y, $valor, $removidos);
 			}
 			// Elimina los disponibles en los demás elementos del bloque
@@ -417,7 +426,7 @@ class miSudoku {
 			&& $this->tablero[$x][$y]['valor'] == '.'
 			&& strpos($this->tablero[$x][$y]['disponibles'], $valor) !== false
 			) {
-			if ($this->tablero[$x][$y]['disponibles'] != $valor) {
+			if ($this->tablero[$x][$y]['disponibles'] !== $valor) {
 				$removidos[] = array(
 					'x' => $x,
 					'y' => $y,
@@ -433,6 +442,163 @@ class miSudoku {
 		}
 
 		return $retornar;
+	}
+
+	/**
+	 * Asigna valores fijos.
+	 * Requiere ejecutar primero $this->construirBase().
+	 * Recibe texto con la estructura del Sudoku deseado, usando "." para indicar las celdas vacias,
+	 * números para las celdas ocupadas (1..9 en un Sudoku de 9x9). Una linea por fila. Las líneas en blanco
+	 * y tabuladores o espacios al inicio/final de cada línea son ignoradas. Opcionalmente puede separar las
+	 * cajas usando el carácter "|" en las fijas e incluyendo una fila con "-" para separar las cajas en horizontal.
+	 * Por ejemplo:
+	 * > ..9|7..|3..
+	 * > ..8|...|659
+	 * > ..1|...|7..
+	 * > -----------
+	 * > .96|837|1.4
+	 * > 1..|...|...
+	 * > .2.|...|..3
+	 * > -----------
+	 * > ...|..4|..1
+	 * > 4..|..3|8..
+	 * > 2..|9.6|..5
+	 */
+	public function setFijas(string $texto) {
+
+		// Limpia todo el tablero (por precaución)
+		$ancho_tablero = $this->anchoTablero();
+		for ($x = 0; $x < $ancho_tablero; $x ++) {
+			for ($y = 0; $y < $ancho_tablero; $y ++) {
+				$this->tablero[$x][$y]['valor'] = '.';
+				$this->tablero[$x][$y]['fija'] = false;
+			}
+		}
+
+		// Puede usar "-", "+" y "|" para facilitar interpretacion. "." para no fijos.
+		$lineas = explode("\n", str_replace(array('-', '|', '+'), '', $texto));
+		$x = 0;
+		$maxvalor = $this->anchoTablero();
+		foreach ($lineas as $linea) {
+			$linea = trim($linea);
+			if ($linea != '') {
+				for ($y=0; $y < strlen($linea); $y++) {
+					if (isset($this->tablero[$x][$y])) {
+						$valor = substr($linea, $y, 1);
+						if (is_numeric($valor) && $valor > 0 && $valor <= $maxvalor) {
+							$this->tablero[$x][$y]['valor'] = $valor;
+							$this->tablero[$x][$y]['fija'] = true;
+							$this->tablero[$x][$y]['disponibles'] = str_replace($valor, '', $this->tablero[$x][$y]['disponibles']);
+						}
+					}
+					else {
+						$this->infoerror = "Sudoku valor fijo manual mal formateado en ({$x},{$y}).";
+						return false;
+					}
+				}
+
+				$x ++;
+			}
+		}
+
+		if ($this->debug) {
+			echo "<pre>"; print_r($this->tablero); echo "</pre><hr>";
+		}
+
+		return true;
+	}
+
+	/**
+	 * Recorre tablero y si encuentra que existen celdas fijas, revisa valores disponibles asociados.
+	 */
+	private function inicializarDisponibles() {
+
+		$hay_fijas = false;
+		$ancho_tablero = $this->anchoTablero();
+
+		for ($x = 0; $x < $ancho_tablero; $x ++) {
+			for ($y = 0; $y < $ancho_tablero; $y ++) {
+				if ($this->tablero[$x][$y]['fija']) {
+					$this->actualizarDisponibles($x, $y);
+					$hay_fijas = true;
+				}
+			}
+		}
+		// Valida unicos solamente si encontró fijas
+		if ($hay_fijas) {
+			$this->validarUnicos();
+		}
+	}
+
+	/**
+	 * Recorre el tablero buscando celdas en blanco que pueden tomar uno y solamente un valor disponible.
+	 *
+	 * @return bool TRUE si el valor es aceptable por las reglas del Sudoku, FALSE en otro caso.
+	 */
+	private function validarUnicos() {
+
+		$ancho_tablero = $this->anchoTablero();
+
+		for ($x = 0; $x < $ancho_tablero; $x ++) {
+			for ($y = 0; $y < $ancho_tablero; $y ++) {
+				if ($this->tablero[$x][$y]['valor'] == '.'
+					&& strlen($this->tablero[$x][$y]['disponibles']) == 1) {
+					if (!$this->llenarCelda($x, $y)) {
+						// No encaja
+						if ($this->debug) {
+							echo "* VALORUNICO NOK en ($x,$y): {$this->infoerror}<hr>";
+						}
+						return false;
+					}
+				}
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Revisa el tablero solucionado y garantiza que todos los valores cumplen con las reglas del Sudoku.
+	 * Imprime mensaje de texto opcionalmente.
+	 *
+	 * @param bool $solo_validar TRUE no imprime mensajes de texto.
+	 * @return bool TRUE si el tablero quedó bien solucionado, FALSE en otro caso.
+	 */
+	public function validarSolucion(bool $solo_validar = false) {
+
+		if ($this->infoerror != '') {
+			if (!$solo_validar) {
+				echo "<p class=\"error\"><b>Aviso:</b><br />" . nl2br($this->infoerror) . "</p>";
+			}
+			return false;
+		}
+
+		$ancho_tablero = $this->anchoTablero();
+		for ($x = 0; $x < $ancho_tablero; $x ++) {
+			for ($y = 0; $y < $ancho_tablero; $y ++) {
+				if ($this->tablero[$x][$y]['valor'] == '.') {
+					$this->infoerror = 'Tablero no solucionado completamente';
+					if (!$solo_validar) {
+						echo "<hr><b>ERROR VALIDACION SUDOKU</b> en ($x,$y) : {$this->infoerror}<hr>";
+					}
+					return false;
+				}
+				elseif (!$this->evalCelda($x, $y, $this->tablero[$x][$y]['valor'])) {
+					// Realiza repeticiones hacia las filas de arriba
+					// ya que la combinación final no genera resultados validos.
+					if (!$solo_validar) {
+						echo "<hr><b>ERROR VALIDACION SUDOKU</b> en ($x,$y) : {$this->infoerror}<hr>";
+					}
+					return false;
+				}
+			}
+		}
+
+		if (!$solo_validar) {
+			echo "<hr><b>VALIDACION SUDOKU OK</b><hr>";
+		}
+
+		return true;
 	}
 
 	/**
@@ -452,6 +618,8 @@ class miSudoku {
 	td.x-borde { border-top-color:#000; }
 	td.y-borde { border-left-color:#000; }
 	td.fija { font-weight:bold; background:#ccc; color:#000; }
+	.error { padding:10px; border:1px solid darkred; color:darkred; margin:10px 0; }
+	.error b { color:darkred; }
 </style>
 <h1>Sudoku</h1>
 ';

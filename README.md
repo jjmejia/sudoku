@@ -12,7 +12,7 @@ Solucionar un Sudoku no es algo trivial, aunque así lo parece. Lo primero que i
 
 * [Definir la clase y visualizar el tablero en pantalla (parte 1)](https://github.com/jjmejia/sudoku/tree/main/parte-1).
 * [Llenar una cuadricula de Sudoku en blanco (parte 2)](https://github.com/jjmejia/sudoku/tree/main/parte-2).
-* Solucionar un Sudoku existente (parte 3).
+* [Solucionar un Sudoku existente (parte 3)](https://github.com/jjmejia/sudoku/tree/main/parte-3).
 * Finalmente, crear un Sudoku para ser impreso (parte 4).
 
 Bueno, con esta ruta comencé con lo básico en estos casos, porque la urgencia en estos proyectos personales suele ser sentarse a programar (usando PHP en mi caso) y comenzar a ver resultados, así no sea la presentación lo más elegante del mundo.
