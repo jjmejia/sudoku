@@ -29,18 +29,11 @@ class miSudoku {
 	// las celdas pertenecientes a una misma caja.
 	private $cajas = array();
 
-	// TRUE para usar un listado de números disponibles (para llenado de celdas) en orden aleatorio.
-	// FALSE para manejar los números siempre en orden (1,2,3...).
-	public $randomBase = true;
-
 	// Cantidad de iteraciones realizadas para llenar el tablero.
 	public $ciclos = 0;
 
 	// Cantidad máxima de iteraciones permitidas (previene ciclos infinitos para Sudokus sin solución).
 	public $maxCiclos = 1000000;
-
-	// Nivel del Sudoku (para creación de Sudokus, no para la solución).
-	public $level = 2; // <=1 easy, 2=medium, 3=hard
 
 	// TRUE para visualizar información adicional y/o mensajes de error en línea.
 	public $debug = false;
@@ -69,12 +62,19 @@ class miSudoku {
 	 *
 	 * @param bool $randomBase TRUE para aleatorizar la lista de valores disponibles para una celda.
 	 */
-	public function construirBase(bool $randomBase = false) {
+	private function construirBase(bool $randomBase = false) {
 
 		// Limpia varibles
 		$this->tablero = array();
 		// Genera listado con los numeros 1,2,...
 		$disponibles = implode('', range(1, $this->anchoTablero()));
+		// Aleatoriza la cadena base.
+		// NOTA: Una prueba de solución mostró que al no aleatorizar, siempre reportaba 531 ciclos al solucionarlo,
+		// en tanto que al aleatorizar podian ser 99, 101, 633 u otro, dependiendo de la cadena generada. Esto
+		// significa que aunque aleatorizar no garantiza una solución más rápida, si puede resultar en una.
+		if (!$randomBase) {
+			$disponibles = str_shuffle($disponibles);
+		}
 
 		// Llena tablero y disponibles
 		for ($x = 0; $x < $this->base; $x++) {
@@ -85,13 +85,9 @@ class miSudoku {
 						$tx = ($cell_x + $x * $this->base);
 						$ty = ($cell_y + $y * $this->base);
 
-						// Aleatoriza la cadena base.
-						// NOTA: Una prueba de solución mostró que al no aleatorizar, siempre reportaba 531 ciclos al solucionarlo,
-						// en tanto que al aleatorizar podian ser 99, 101, 633 u otro, dependiendo de la cadena generada. Esto
-						// significa que aunque aleatorizar no garantiza una solución más rápida, si puede resultar en una.
 						// Para tableros limpios, aleatorizar para cada celda permite generar tableros mucho mas variados.
 						// (Si solamente se aleatoriza una vez, todos los tableros con la misma secuencia serán iguales)
-						if ($this->randomBase || $randomBase) {
+						if ($randomBase) {
 							$disponibles = str_shuffle($disponibles);
 						}
 
@@ -109,22 +105,64 @@ class miSudoku {
 				}
 			}
 		}
+
+		// Inicializa conteo de ciclos
+		$this->ciclos = 0;
 	}
 
 	/**
-	 * Retorna cadena con el listado completo de valores contenido en un Sudoku.
+	 * Llena un tablero en blanco.
+	 *
+	 * @return string Cadena texto con los datos del Sudoku.
+	 */
+	public function tableroEnBlanco() {
+
+		$this->construirBase(true);
+		$this->llenarFilas();
+
+		return $this->valores();
+	}
+
+	/**
+	 * Retorna cadena con el listado completo de valores contenido en el tablero de Sudoku actual.
 	 * Asigna cada fila de celdas a una línea de la cadena texto, de forma que retorna tantas
 	 * líneas como filas tenga el Sudoku.
 	 *
 	 * @return string Cadena texto.
 	 */
-	private function valores() {
+	public function valores() {
 
 		$data = '';
 		$ancho_tablero = $this->anchoTablero();
 		for ($x = 0; $x < $ancho_tablero; $x ++) {
 			for ($y = 0; $y < $ancho_tablero; $y ++) {
 				$data .= $this->tablero[$x][$y]['valor'];
+			}
+			$data .= "\n";
+		}
+
+		return $data;
+	}
+
+	/**
+	 * Recupera cadena con el listado de valores fijos contenidos en el tablero de Sudoku actual.
+	 * Asigna cada fila de celdas a una línea de la cadena texto, de forma que retorna tantas
+	 * líneas como filas tenga el Sudoku. Las celdas no fijas las identifica con ".".
+	 *
+	 * @return string Cadena texto.
+	 */
+	public function fijas() {
+
+		$data = '';
+		$ancho_tablero = $this->anchoTablero();
+		for ($x = 0; $x < $ancho_tablero; $x ++) {
+			for ($y = 0; $y < $ancho_tablero; $y ++) {
+				if (!$this->tablero[$x][$y]['fija']) {
+					$data .= '.';
+				}
+				else {
+					$data .= $this->tablero[$x][$y]['valor'];
+				}
 			}
 			$data .= "\n";
 		}
@@ -250,7 +288,7 @@ class miSudoku {
 
 							// Revisa los posibles valores con solamente un elemento disponible. Si alguno falla
 							// en ser un valor valido, cancela esta actualización.
-							$encontrado = $this->validarUnicos();
+							$encontrado = $this->validarUnicos($removidos);
 
 							break;
 						}
@@ -463,8 +501,14 @@ class miSudoku {
 	 * > ...|..4|..1
 	 * > 4..|..3|8..
 	 * > 2..|9.6|..5
+	 *
+	 * @param string $texto Cadena de texto con la asignación de celdas fijas.
+	 * @return bool TRUE si pudo asignar correctamente la cadena recibida, FALSE en otro caso.
 	 */
 	public function setFijas(string $texto) {
+
+		// Inicializa tablero
+		$this->construirBase();
 
 		// Limpia todo el tablero (por precaución)
 		$ancho_tablero = $this->anchoTablero();
@@ -502,7 +546,7 @@ class miSudoku {
 		}
 
 		if ($this->debug) {
-			echo "<pre>"; print_r($this->tablero); echo "</pre><hr>";
+			echo "<pre>"; print_r($this->tablero); echo "</pre><hr><p>{$this->infoerror}</p>";
 		}
 
 		return true;
@@ -513,43 +557,49 @@ class miSudoku {
 	 */
 	private function inicializarDisponibles() {
 
-		$hay_fijas = false;
+		$arreglo = array();
 		$ancho_tablero = $this->anchoTablero();
 
 		for ($x = 0; $x < $ancho_tablero; $x ++) {
 			for ($y = 0; $y < $ancho_tablero; $y ++) {
 				if ($this->tablero[$x][$y]['fija']) {
-					$this->actualizarDisponibles($x, $y);
-					$hay_fijas = true;
+					$removidos = $this->actualizarDisponibles($x, $y);
+					foreach ($removidos as $info) {
+						// Usa llave para prevenir duplicar valores en $arreglo
+						$arreglo[$info['x'].'/'.$info['y']] = array(
+							'x' => $info['x'],
+							'y' => $info['y']
+						);
+					}
 				}
 			}
 		}
+
 		// Valida unicos solamente si encontró fijas
-		if ($hay_fijas) {
-			$this->validarUnicos();
-		}
+		$this->validarUnicos($arreglo);
 	}
 
 	/**
 	 * Recorre el tablero buscando celdas en blanco que pueden tomar uno y solamente un valor disponible.
 	 *
+	 * @param array $arreglo Arreglo de celdas a evaluar.
 	 * @return bool TRUE si el valor es aceptable por las reglas del Sudoku, FALSE en otro caso.
 	 */
-	private function validarUnicos() {
+	private function validarUnicos(array $arreglo) {
 
-		$ancho_tablero = $this->anchoTablero();
-
-		for ($x = 0; $x < $ancho_tablero; $x ++) {
-			for ($y = 0; $y < $ancho_tablero; $y ++) {
-				if ($this->tablero[$x][$y]['valor'] == '.'
-					&& strlen($this->tablero[$x][$y]['disponibles']) == 1) {
-					if (!$this->llenarCelda($x, $y)) {
-						// No encaja
-						if ($this->debug) {
-							echo "* VALORUNICO NOK en ($x,$y): {$this->infoerror}<hr>";
-						}
-						return false;
+		// NOTA: Se optimiza este método para evaluar solamente las celdas que han sufrido modificaciones en
+		// sus valores de "disponibles".
+		foreach ($arreglo as $info) {
+			$x = $info['x'];
+			$y = $info['y'];
+			if ($this->tablero[$x][$y]['valor'] == '.'
+				&& strlen($this->tablero[$x][$y]['disponibles']) == 1) {
+				if (!$this->llenarCelda($x, $y)) {
+					// No encaja
+					if ($this->debug) {
+						echo "* VALORUNICO NOK en ($x,$y): {$this->infoerror}<hr>";
 					}
+					return false;
 				}
 			}
 		}
@@ -599,6 +649,144 @@ class miSudoku {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Valida que la solución dada para un Sudoku sea única.
+	 *
+	 * @param string $fijas Cadena de texto con la asignación de celdas fijas.
+	 * @param string $solucion Cadena de texto con la solución a validar.
+	 * @return bool TRUE si la validación es éxitosa, FALSE si encontró otra posible solución.
+	 */
+	public function validarSolucionPrevia(string $fijas, string $solucion) {
+
+		// Fija la solución para capturar rapidamente los datos
+		$this->setFijas($solucion);
+		$tablero_solucion = $this->tablero;
+		$valores_solucion = $this->valores();
+
+		// Ahora si, asigna las fijas
+		$this->setFijas($fijas);
+
+		// Revisa cada celda y ubica al final de la lista de "disponibles" aquellas que
+		// corresponden a la solución esperada.
+		$ancho_tablero = $this->anchoTablero();
+		for ($x = 0; $x < $ancho_tablero; $x ++) {
+			for ($y = 0; $y < $ancho_tablero; $y ++) {
+				if (!$this->tablero[$x][$y]['fija']) {
+					$valor_esperado = $tablero_solucion[$x][$y]['valor'];
+					$this->tablero[$x][$y]['disponibles'] = str_replace($valor_esperado, '', $this->tablero[$x][$y]['disponibles']) . $valor_esperado;
+				}
+			}
+		}
+
+		$this->llenarFilas();
+
+		// Compara que la solución obtenida (Si alguna) sea la esperada.
+		return ($this->infoerror === '' && $valores_solucion === $this->valores());
+	}
+
+	/**
+	 * Crea un tablero de SUdoku nuevo.
+	 * Según cita Wikipedia, se requiere que hayan al menos 17 celdas en el tablero
+	 * (para un sudoku de 9x9), es decir, el 21% (para 4x4 sería 4). Esto sería un sudoku MUY dificil.
+	 * Cómo generar el tablero? Se eliminan celdas hasta llegar a 17 o encontrar una combinación sin
+	 * solución. Para cada caso, se valida que la solución que se obtenga coincida con la original.
+	 *
+	 * Lista todas las posibles opciones de Sudoku hasta llegar a un punto donde no sea posible eliminar una
+	 * celda sin que se tenga más de una posible solución. Este será el tablero con nivel "dificil".
+	 *
+	 * @return array Datos para nuevo Sudoku.
+	 */
+	public function nuevo() {
+
+		// Usar para tableros en blanco
+		$data = $this->tableroEnBlanco(true);
+
+		// Remueve originalmente la mitad de los valores
+		$ancho_tablero = $this->anchoTablero();
+		$nueva_data = $data;
+		$len = strlen($nueva_data);
+		$ciclos = 1000;
+		$numeros = range(0, $len - 1);
+		shuffle($numeros);
+
+		// A partir de aquí remueve hasta encontrar una no-solución o que hayan al menos 17 elementos
+		// (para un sudoku de 9x9), es decir, el 21% (para 4x4 sería 4). Esto sería un sudoku MUY dificil.
+		$minimo = floor($len * 0.21);
+
+		$soluciones = array(0 => '');
+		$index = 0;
+		$continuar = true;
+
+		// Cantidad de repeticiones al encontrar una no-solución al generar un Sudoku nuevo
+		$repeticiones = 0;
+
+		// Algunas validaciones pueden tomar mucho tiempo
+		set_time_limit(0);
+
+		while ($repeticiones < count($numeros) && $ciclos > 0 && count($numeros) >= $minimo) {
+			// Retira primer elemento de la lista. Si no corresponde a un valor numérico, repite.
+			$r = array_shift($numeros);
+			if (!is_numeric(substr($nueva_data, $r, 1))) { continue; } // Espacios en blanco, separadores de linea
+
+			$ciclos --;
+			$pre = $nueva_data;
+			$nueva_data = substr($nueva_data, 0, $r) . '.' . substr($nueva_data, $r + 1);
+
+			// Realizó cambio, valida solución
+			$terminar = true;
+			if (!$this->validarSolucionPrevia($nueva_data, $data)) {
+				// Sudoku no completado, restablece la posición actual e intenta de nuevo...
+				$numeros[] = $r;
+				$repeticiones ++;
+				// Restablece e intenta con uno nuevo
+				$nueva_data = $pre;
+				// Repite ciclo
+				if ($this->debug) {
+					$c = count($soluciones);
+					echo "SOLUCION NO VALIDA EN $r ($c/$ciclos): ";
+					if ($this->infoerror == '') {
+						echo "MULTIPLE SOLUCION<br>" . $this->valores() ."<br>{$data}<br>";
+					}
+					echo "{$this->infoerror}<hr>";
+				}
+				$this->infoerror = '';
+			}
+			else {
+				// Registra solución
+				$soluciones[] = array(
+					'data' => $nueva_data,
+					'ciclos' => $this->ciclos,
+					'repeticiones' => $repeticiones
+					);
+				// Restablece no-soluciones
+				$repeticiones = 0;
+			}
+		}
+
+		$dificil = count($soluciones) - 1;
+		// El facil es el de la mitad + 0..2 para que no siempre salgan de la misma cantidad de celdas
+		$facil = ceil($dificil * 0.7) + rand(0, 1);
+		$medio = ceil($dificil * 0.85) + rand(0, 1);
+		// Validación extra
+		if ($medio <= $facil || $medio >= $dificil) { $medio = 0; }
+		if ($facil >= $dificil) { $facil = $dificil; $dificil = 0; }
+
+		$retornar = array(
+			'dificil' => $soluciones[$dificil]['data'],
+			'medio' => $soluciones[$medio]['data'],
+			'facil' => $soluciones[$facil]['data'],
+			'solucion' => $data,
+			'total-opciones' => $dificil,
+			'ciclos' => 1000 - $ciclos
+			);
+
+		if ($this->debug) {
+			echo "OPCIONES SUDOKU NUEVO:<pre>"; print_r($soluciones); echo "\nFINAL:\n"; print_r($retornar); echo "</pre><hr>";
+		}
+
+		return $retornar;
 	}
 
 	/**
@@ -661,10 +849,7 @@ class miSudoku {
 		if ($this->ciclos > 0) {
 			$salida .= "<hr><p><b>Ciclos:</b> {$this->ciclos} (max.Ciclos: {$this->maxCiclos})</p>";
 		}
-		if (!$this->publicado) {
-			$salida .= "<hr><p><b>CheckSum:</b> " . $this->checksum() . "</p>";
-			$salida .= "<hr><p><b>Nivel:</b> {$this->level}</p>";
-		}
+		$salida .= "<hr><p><b>CheckSum:</b> " . $this->checksum() . "</p>";
 
 		$this->publicado = true;
 
