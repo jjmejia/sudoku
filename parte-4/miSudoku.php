@@ -612,9 +612,10 @@ class miSudoku {
 	 * Imprime mensaje de texto opcionalmente.
 	 *
 	 * @param bool $solo_validar TRUE no imprime mensajes de texto.
+	 * @param string $checksum Opcional, checksum de solución deseada a validar.
 	 * @return bool TRUE si el tablero quedó bien solucionado, FALSE en otro caso.
 	 */
-	public function validarSolucion(bool $solo_validar = false) {
+	public function validarSolucion(bool $solo_validar = false, string $checksum = '') {
 
 		if ($this->infoerror != '') {
 			if (!$solo_validar) {
@@ -623,6 +624,15 @@ class miSudoku {
 			return false;
 		}
 
+		// Si recibe checksum a validar, lo compara con el de la solución actual
+		if ($checksum !== '' && $this->checksum() !== $checksum) {
+			if (!$solo_validar) {
+				echo "<p class=\"error\"><b>Error:</b> La solución actual no coincide con la esperada.</p>";
+			}
+			return false;
+		}
+
+		// Procede a validar cada celda del tablero
 		$ancho_tablero = $this->anchoTablero();
 		for ($x = 0; $x < $ancho_tablero; $x ++) {
 			for ($y = 0; $y < $ancho_tablero; $y ++) {
@@ -655,15 +665,15 @@ class miSudoku {
 	 * Valida que la solución dada para un Sudoku sea única.
 	 *
 	 * @param string $fijas Cadena de texto con la asignación de celdas fijas.
-	 * @param string $solucion Cadena de texto con la solución a validar.
+	 * @param array $data_solucion Arreglo que contiene la cadena de texto con la solución
+	 *        a validar ("valores") y la estructura de tablero de dicha solución ("data").
 	 * @return bool TRUE si la validación es éxitosa, FALSE si encontró otra posible solución.
 	 */
-	public function validarSolucionPrevia(string $fijas, string $solucion) {
+	public function validarSolucionPrevia(string $fijas, array $data_solucion) {
 
 		// Fija la solución para capturar rapidamente los datos
-		$this->setFijas($solucion);
-		$tablero_solucion = $this->tablero;
-		$valores_solucion = $this->valores();
+		$tablero_solucion = $data_solucion['data'];
+		$valores_solucion = $data_solucion['valores'];
 
 		// Ahora si, asigna las fijas
 		$this->setFijas($fijas);
@@ -700,57 +710,62 @@ class miSudoku {
 	 */
 	public function nuevo() {
 
-		// Usar para tableros en blanco
-		$data = $this->tableroEnBlanco(true);
+		// Para controlar los mensajes de debug generados, bloquea la propiedad global
+		$debug = $this->debug;
+		$this->debug = false;
 
-		// Remueve originalmente la mitad de los valores
-		$ancho_tablero = $this->anchoTablero();
-		$nueva_data = $data;
+		// Captura datos de un nuevo tablero en blanco
+		$nueva_data = $this->tableroEnBlanco(true);
+		$data_solucion = array(
+			'data' => $this->tablero,
+			'valores' => $nueva_data,
+			'checksum' => $this->checksum()
+			);
+
 		$len = strlen($nueva_data);
-		$ciclos = 1000;
+		// $len es el tamaño de la cadena de solución, que contiene separadores de línea ("\n").
 		$numeros = range(0, $len - 1);
 		shuffle($numeros);
 
 		// A partir de aquí remueve hasta encontrar una no-solución o que hayan al menos 17 elementos
 		// (para un sudoku de 9x9), es decir, el 21% (para 4x4 sería 4). Esto sería un sudoku MUY dificil.
-		$minimo = floor($len * 0.21);
+		$total_fijas = $this->anchoTablero() * $this->anchoTablero();
+		$minimo = ceil($total_fijas * 0.21);
 
 		$soluciones = array(0 => '');
-		$index = 0;
-		$continuar = true;
 
 		// Cantidad de repeticiones al encontrar una no-solución al generar un Sudoku nuevo
 		$repeticiones = 0;
 
-		// Algunas validaciones pueden tomar mucho tiempo
-		set_time_limit(0);
+		// Conteo total de ciclos ejecutados
+		$total_ciclos = 0;
 
-		while ($repeticiones < count($numeros) && $ciclos > 0 && count($numeros) >= $minimo) {
+		while (count($numeros) > 0 && $total_fijas > $minimo) {
 			// Retira primer elemento de la lista. Si no corresponde a un valor numérico, repite.
 			$r = array_shift($numeros);
-			if (!is_numeric(substr($nueva_data, $r, 1))) { continue; } // Espacios en blanco, separadores de linea
+			if (!is_numeric($nueva_data[$r])) { continue; } // Espacios en blanco, separadores de linea
 
-			$ciclos --;
-			$pre = $nueva_data;
-			$nueva_data = substr($nueva_data, 0, $r) . '.' . substr($nueva_data, $r + 1);
+			$pre = $nueva_data[$r];
+			$nueva_data[$r] = '.';
 
 			// Realizó cambio, valida solución
-			$terminar = true;
-			if (!$this->validarSolucionPrevia($nueva_data, $data)) {
-				// Sudoku no completado, restablece la posición actual e intenta de nuevo...
-				$numeros[] = $r;
+			if (!$this->validarSolucionPrevia($nueva_data, $data_solucion)) {
+				// Sudoku no completado, intenta de nuevo
+				// No restablece la posición actual porque si da no pudo encontrar una solución única teniendo
+				// más celdas fijas, con menos fijas será menos probable que pueda hacerlo.
 				$repeticiones ++;
 				// Restablece e intenta con uno nuevo
-				$nueva_data = $pre;
+				$nueva_data[$r] = $pre;
 				// Repite ciclo
-				if ($this->debug) {
+				if ($debug) {
 					$c = count($soluciones);
-					echo "SOLUCION NO VALIDA EN $r ($c/$ciclos): ";
+					echo "SOLUCION NO VALIDA EN $r ($c/$repeticiones): ";
 					if ($this->infoerror == '') {
-						echo "MULTIPLE SOLUCION<br>" . $this->valores() ."<br>{$data}<br>";
+						echo "MULTIPLE SOLUCION<br>" . $this->valores() ."<br>{$data_solucion['valores']}<br>";
 					}
 					echo "{$this->infoerror}<hr>";
 				}
+				// Limpia mensajes de error existentes
 				$this->infoerror = '';
 			}
 			else {
@@ -762,7 +777,11 @@ class miSudoku {
 					);
 				// Restablece no-soluciones
 				$repeticiones = 0;
+				// Actualiza cuántos quedan
+				$total_fijas --;
 			}
+			// Estadistica
+			$total_ciclos += $this->ciclos;
 		}
 
 		$dificil = count($soluciones) - 1;
@@ -777,13 +796,22 @@ class miSudoku {
 			'dificil' => $soluciones[$dificil]['data'],
 			'medio' => $soluciones[$medio]['data'],
 			'facil' => $soluciones[$facil]['data'],
-			'solucion' => $data,
+			'solucion' => $data_solucion['valores'],
 			'total-opciones' => $dificil,
-			'ciclos' => 1000 - $ciclos
+			'ciclos' => $total_ciclos,
+			'fijas' => $total_fijas,
+			'checksum-solucion' => $data_solucion['checksum']
 			);
 
+		// Restablece propiedad global
+		$this->debug = $debug;
+
 		if ($this->debug) {
-			echo "OPCIONES SUDOKU NUEVO:<pre>"; print_r($soluciones); echo "\nFINAL:\n"; print_r($retornar); echo "</pre><hr>";
+			echo "OPCIONES SUDOKU NUEVO ($total_ciclos ciclos):<pre>";
+			print_r($soluciones);
+			echo "\nFINAL:\n";
+			print_r($retornar);
+			echo "</pre><hr>";
 		}
 
 		return $retornar;
