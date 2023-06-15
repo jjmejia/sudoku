@@ -44,6 +44,9 @@ class miSudoku {
 	// Mensajes de error encontrados al llenar el tablero.
 	private $infoerror = '';
 
+	// Total de celdas fijas
+	private $totalFijas = 0;
+
 	/**
 	 * Retorna el ancho/alto del tablero (4 o 9, usualmente), según la base usada (2 o 3 respectivamente).
 	 * Tener presente que el tablero de Sudoku debe tener el mismo número de celdas de ancho que de alto.
@@ -108,6 +111,7 @@ class miSudoku {
 
 		// Inicializa conteo de ciclos
 		$this->ciclos = 0;
+		$this->totalFijas = 0;
 	}
 
 	/**
@@ -519,6 +523,8 @@ class miSudoku {
 			}
 		}
 
+		$this->totalFijas = 0;
+
 		// Puede usar "-", "+" y "|" para facilitar interpretacion. "." para no fijos.
 		$lineas = explode("\n", str_replace(array('-', '|', '+'), '', $texto));
 		$x = 0;
@@ -533,6 +539,7 @@ class miSudoku {
 							$this->tablero[$x][$y]['valor'] = $valor;
 							$this->tablero[$x][$y]['fija'] = true;
 							$this->tablero[$x][$y]['disponibles'] = str_replace($valor, '', $this->tablero[$x][$y]['disponibles']);
+							$this->totalFijas ++;
 						}
 					}
 					else {
@@ -697,14 +704,80 @@ class miSudoku {
 	}
 
 	/**
+	 * Valida las celdas fijas para determinar que corresponden a un Sudoku fácil.
+	 * Debe cumplir las siguientes condiciones:
+	 * - Tienen al menos tres celdas fijas por fila, columna, caja
+	 * - Tiene al menos una celda para cada número.
+	 *
+	 * @param string $fijas Cadena de texto con la asignación de celdas fijas.
+	 * @return bool TRUE si las celdas fijas indicadas proveen una solución "fácil", FALSE en otro caso.
+	 */
+	public function validarFacil(string $fijas) {
+
+		$this->setFijas($fijas);
+		$ancho_tablero = $this->anchoTablero();
+
+		$controles = array(
+			// números: Al final deben quedar $ancho_tablero elementos unicos
+			'numeros' => array(),
+			// cajas: Al final deben quedar $ancho_tablero elementos con valor >= $this->base
+			'cajas' => array(),
+			// filas y columnas: Al final deben quedar $ancho_tablero elementos con valor >= $this->base
+			'columnas' => array_fill(0, $ancho_tablero, 0),
+			'filas' => array_fill(0, $ancho_tablero, 0)
+		);
+
+		// Inicializa control cajas
+		foreach ($this->cajas as $idbloque => $datacaja) {
+			$controles['cajas'][$idbloque] = 0;
+		}
+
+		for ($x = 0; $x < $ancho_tablero; $x ++) {
+			for ($y = 0; $y < $ancho_tablero; $y ++) {
+				if ($this->tablero[$x][$y]['fija']) {
+					$controles['numeros'][$this->tablero[$x][$y]['valor']] = true;
+					$controles['cajas'][$this->tablero[$x][$y]['caja']] ++;
+					$controles['columnas'][$x] ++;
+					$controles['filas'][$y] ++;
+				}
+			}
+		}
+
+		$retornar = (count($controles['numeros']) == $ancho_tablero);
+
+		// Revisa controles
+		if ($retornar) {
+			for ($i = 0; $i < $ancho_tablero; $i++) {
+				if ($controles['filas'][$i] < $this->base || $controles['columnas'] < $this->base) {
+					$retornar = false;
+					break;
+				}
+			}
+		}
+		if ($retornar) {
+			foreach ($this->cajas as $idbloque => $datacaja) {
+				if ($controles['cajas'][$idbloque] < $this->base) {
+					$retornar = false;
+					break;
+				}
+			}
+		}
+
+		return $retornar;
+	}
+
+	/**
 	 * Crea un tablero de SUdoku nuevo.
 	 * Según cita Wikipedia, se requiere que hayan al menos 17 celdas en el tablero
 	 * (para un sudoku de 9x9), es decir, el 21% (para 4x4 sería 4). Esto sería un sudoku MUY dificil.
-	 * Cómo generar el tablero? Se eliminan celdas hasta llegar a 17 o encontrar una combinación sin
-	 * solución. Para cada caso, se valida que la solución que se obtenga coincida con la original.
-	 *
-	 * Lista todas las posibles opciones de Sudoku hasta llegar a un punto donde no sea posible eliminar una
-	 * celda sin que se tenga más de una posible solución. Este será el tablero con nivel "dificil".
+	 * Cómo generar el tablero?
+	 * - Remover una celda por vez y validar que cumple con los requerimientos de “solución única” y de
+	 *   un tablero de nivel fácil arriba descritas. El último Sudoku posible que cumpla con estas condiciones
+	 *   será precisamente el de nivel “fácil”.
+	 * - Continuar removiendo celdas validando simplemente que tenga una “única solución”, hasta encontrar el
+	 *   último Sudoku posible. Este será el de nivel “difícil”.
+	 * - El Sudoku de nivel “medio” será el que quede en la posición media (redundancia intencional) entre el
+	 *   difícil y el fácil.
 	 *
 	 * @return array Datos para nuevo Sudoku.
 	 */
@@ -740,13 +813,43 @@ class miSudoku {
 		// Conteo total de ciclos ejecutados
 		$total_ciclos = 0;
 
-		while (count($numeros) > 0 && $total_fijas > $minimo) {
+		// Cuenta posición mínima a usar para Sudokus faciles (30 para 9x9, es decir, 37%)
+		$facil_min = ceil($total_fijas * 0.37);
+		$facil = 0;
+
+		// Control de busqueda de faciles
+		$resto = array();
+		$buscarfacil = true;
+
+		while (($buscarfacil || count($numeros) > 0) && $total_fijas > $minimo) {
+
+			if ($buscarfacil && count($numeros) <= 0) {
+				// Recupera resto
+				$buscarfacil = false;
+				$numeros = $resto;
+				// echo "RESTABLECE RESTO: "; print_r($numeros); echo "<hr>";
+			}
+
 			// Retira primer elemento de la lista. Si no corresponde a un valor numérico, repite.
 			$r = array_shift($numeros);
 			if (!is_numeric($nueva_data[$r])) { continue; } // Espacios en blanco, separadores de linea
 
 			$pre = $nueva_data[$r];
 			$nueva_data[$r] = '.';
+
+			if ($buscarfacil && !$this->validarFacil($nueva_data)) {
+				// Preserva
+				$resto[] = $r;
+				// Restablece valor en data
+				$nueva_data[$r] = $pre;
+				// Depuración
+				if ($debug) {
+					$c = count($soluciones);
+					echo "EVALUADO TABLEROS FACILES, IGNORA $r ($c/$repeticiones).";
+					echo "Fijas: {$total_fijas} Acumulado: " . count($resto) . "<hr>";
+				}
+				continue;
+			}
 
 			// Realizó cambio, valida solución
 			if (!$this->validarSolucionPrevia($nueva_data, $data_solucion)) {
@@ -773,21 +876,23 @@ class miSudoku {
 				$soluciones[] = array(
 					'data' => $nueva_data,
 					'ciclos' => $this->ciclos,
-					'repeticiones' => $repeticiones
+					'repeticiones' => $repeticiones,
+					'fijas' => $this->totalFijas
 					);
+				// Actualiza control de faciles
+				if ($buscarfacil) { $facil = count($soluciones) - 1; }
 				// Restablece no-soluciones
 				$repeticiones = 0;
 				// Actualiza cuántos quedan
-				$total_fijas --;
+				$total_fijas = $this->totalFijas;
 			}
 			// Estadistica
 			$total_ciclos += $this->ciclos;
 		}
 
 		$dificil = count($soluciones) - 1;
-		// El facil es el de la mitad + 0..2 para que no siempre salgan de la misma cantidad de celdas
-		$facil = ceil($dificil * 0.7) + rand(0, 1);
-		$medio = ceil($dificil * 0.85) + rand(0, 1);
+		// Rango medio se mide entre $facil_min y $dificil
+		$medio = $facil + ceil(($dificil - $facil)/2);
 		// Validación extra
 		if ($medio <= $facil || $medio >= $dificil) { $medio = 0; }
 		if ($facil >= $dificil) { $facil = $dificil; $dificil = 0; }
@@ -798,6 +903,7 @@ class miSudoku {
 			'facil' => $soluciones[$facil]['data'],
 			'solucion' => $data_solucion['valores'],
 			'total-opciones' => $dificil,
+			'indexes' => array($facil, $medio, $dificil),
 			'ciclos' => $total_ciclos,
 			'fijas' => $total_fijas,
 			'checksum-solucion' => $data_solucion['checksum']
@@ -807,7 +913,7 @@ class miSudoku {
 		$this->debug = $debug;
 
 		if ($this->debug) {
-			echo "OPCIONES SUDOKU NUEVO ($total_ciclos ciclos):<pre>";
+			echo "OPCIONES SUDOKU NUEVO ($total_ciclos ciclos / $total_fijas < $minimo):<pre>";
 			print_r($soluciones);
 			echo "\nFINAL:\n";
 			print_r($retornar);
