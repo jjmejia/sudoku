@@ -1,6 +1,6 @@
 # sudoku
 
-## Solucionar un Sudoku existente (parte 4)
+## Crear un Sudoku para ser impreso (parte 4)
 
 Hay reglas a considerar para la creación correcta de un Sudoku y en este último artículo, relacionado con la creación de Sudokus usando PHP. Para la creación de un tablero de Sudoku no basta con rellenar una cuadrícula en blanco y que fue cubierta en un artículo anterior. De acuerdo con la información en [Wikipedia](https://en.wikipedia.org/wiki/Sudoku), existen al menos un par de reglas que deben tenerse en cuenta:
 
